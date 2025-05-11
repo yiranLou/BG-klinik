@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<OpenSimDocument Version="30000">
+	<MarkerSet>
+		<objects>
+			<Marker name="D2P">
+				<!--Body segment in the model on which the marker resides.-->
+				<body>LA5P2</body>
+				<!--Location of a marker on the body segment.-->
+				<location> 0.00126676 -0.0153852 -0.0152447</location>
+				<!--Flag (true or false) specifying whether or not a marker should be kept fixed in the marker placement step.  i.e. If false, the marker is allowed to move.-->
+				<fixed>false</fixed>
+			</Marker>
+			<Marker name="D3P">
+				<!--Body segment in the model on which the marker resides.-->
+				<body>LA5P3</body>
+				<!--Location of a marker on the body segment.-->
+				<location> -0.00360336 -0.0187179 -0.0160623</location>
+				<!--Flag (true or false) specifying whether or not a marker should be kept fixed in the marker placement step.  i.e. If false, the marker is allowed to move.-->
+				<fixed>false</fixed>
+			</Marker>
+			<Marker name="D4P">
+				<!--Body segment in the model on which the marker resides.-->
+				<body>LA5P4</body>
+				<!--Location of a marker on the body segment.-->
+				<location> -0.00772855 -0.0189967 -0.0115102</location>
+				<!--Flag (true or false) specifying whether or not a marker should be kept fixed in the marker placement step.  i.e. If false, the marker is allowed to move.-->
+				<fixed>true</fixed>
+			</Marker>
+			<Marker name="D5P">
+				<!--Body segment in the model on which the marker resides.-->
+				<body>LA5P5</body>
+				<!--Location of a marker on the body segment.-->
+				<location> -0.0101363 -0.0174918 -0.0081413</location>
+				<!--Flag (true or false) specifying whether or not a marker should be kept fixed in the marker placement step.  i.e. If false, the marker is allowed to move.-->
+				<fixed>false</fixed>
+			</Marker>
+				<Marker name="D2H">
+				<!--Body segment in the model on which the marker resides.-->
+				<body>LA4M2</body>
+				<!--Location of a marker on the body segment.-->
+				<location> 0.00146741 -0.00738783 -0.0121883</location>
+				<!--Flag (true or false) specifying whether or not a marker should be kept fixed in the marker placement step.  i.e. If false, the marker is allowed to move.-->
+				<fixed>false</fixed>
+			</Marker>
+			<Marker name="D3H">
+				<!--Body segment in the model on which the marker resides.-->
+				<body>LA4M3</body>
+				<!--Location of a marker on the body segment.-->
+				<location> -0.0020906 -0.00801564 -0.0111827</location>
+				<!--Flag (true or false) specifying whether or not a marker should be kept fixed in the marker placement step.  i.e. If false, the marker is allowed to move.-->
+				<fixed>false</fixed>
+			</Marker>
+			<Marker name="D4H">
+				<!--Body segment in the model on which the marker resides.-->
+				<body>LA4M4</body>
+				<!--Location of a marker on the body segment.-->
+				<location> -0.00657609 -0.00723419 -0.00973516</location>
+				<!--Flag (true or false) specifying whether or not a marker should be kept fixed in the marker placement step.  i.e. If false, the marker is allowed to move.-->
+				<fixed>false</fixed>
+			</Marker>
+			<Marker name="D5H">
+				<!--Body segment in the model on which the marker resides.-->
+				<body>LA4M5</body>
+				<!--Location of a marker on the body segment.-->
+				<location> -0.00859257 -0.00815796 -0.00808664</location>
+				<!--Flag (true or false) specifying whether or not a marker should be kept fixed in the marker placement step.  i.e. If false, the marker is allowed to move.-->
+				<fixed>false</fixed>
+			</Marker>
+			<Marker name="HM">
+				<!--Body segment in the model on which the marker resides.-->
+				<body>LA4M2</body>
+				<!--Location of a marker on the body segment.-->
+				<location> -0.00173754 0.0268452 -0.0116257</location>
+				<!--Flag (true or false) specifying whether or not a marker should be kept fixed in the marker placement step.  i.e. If false, the marker is allowed to move.-->
+				<fixed>false</fixed>
+			</Marker>
+			<Marker name="HL">
+				<!--Body segment in the model on which the marker resides.-->
+				<body>LA4M4</body>
+				<!--Location of a marker on the body segment.-->
+				<location> -0.00692357 0.0321725 -0.0102104</location>
+				<!--Flag (true or false) specifying whether or not a marker should be kept fixed in the marker placement step.  i.e. If false, the marker is allowed to move.-->
+				<fixed>false</fixed>
+			</Marker>
+			<Marker name="ArmM">
+				<!--Body segment in the model on which the marker resides.-->
+				<body>LA2U</body>
+				<!--Location of a marker on the body segment.-->
+				<location> 0.00191959 -0.0140361 -0.021595</location>
+				<!--Flag (true or false) specifying whether or not a marker should be kept fixed in the marker placement step.  i.e. If false, the marker is allowed to move.-->
+				<fixed>false</fixed>
+			</Marker>
+			<Marker name="ArmL">
+				<!--Body segment in the model on which the marker resides.-->
+				<body>LA2U</body>
+				<!--Location of a marker on the body segment.-->
+				<location> -0.00996767 -0.00854712 -0.0177573</location>
+				<!--Flag (true or false) specifying whether or not a marker should be kept fixed in the marker placement step.  i.e. If false, the marker is allowed to move.-->
+				<fixed>false</fixed>
+			</Marker>
+			<Marker name="ArmC">
+				<!--Body segment in the model on which the marker resides.-->
+				<body>LA2U</body>
+				<!--Location of a marker on the body segment.-->
+				<location> -0.00797829 -0.0240175 -0.0196133</location>
+				<!--Flag (true or false) specifying whether or not a marker should be kept fixed in the marker placement step.  i.e. If false, the marker is allowed to move.-->
+				<fixed>false</fixed>
+			</Marker>
+		</objects>
+		<groups />
+	</MarkerSet>
+</OpenSimDocument>

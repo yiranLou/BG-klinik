@@ -1,0 +1,3 @@
+"""
+newPipeline package initialization
+""" 
