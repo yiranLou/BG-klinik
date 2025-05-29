@@ -27,7 +27,7 @@ warnings.filterwarnings('ignore')
 # Add project root to Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.neural_network.data_loader import MotionDataLoader
+from newPipeline.src.neural_network.data_loader import MotionDataLoader
 from src.neural_network.data_loader_emg import EMGDataLoader
 from src.neural_network.models import AttentionLSTM, create_improved_model
 from src.neural_network.trainer import ImprovedTrainer

@@ -2,22 +2,22 @@ import opensim as osim
 import matplotlib.pyplot as plt
 
 # =========================================================
-# STEP 0: 用户可在此处修改一些通用设置
+# STEP 0: User settings that can be modified here
 # =========================================================
 IK_SETUP_FILE = r"C:\temporary_file\BG_klinik\newPipeline\config\setup\IK_setup_N10.xml"
 SCALED_MODEL_FILE = r"C:\temporary_file\BG_klinik\newPipeline\config\models\ms_arm_and_hand-main\AAH Model\RightArmAndHand_scaled.osim"
 RESULTS_DIR = r"C:\temporary_file\BG_klinik\newPipeline\data\processed\Ik_result\ikTOtest"
 
-# 是否使用自定义时间范围 (覆盖 IK_setup.xml 里的 startTime 与 endTime)
+# Whether to use custom time range (overrides startTime and endTime in IK_setup.xml)
 USE_CUSTOM_TIME_RANGE = False
 CUSTOM_START_TIME = 0.0
 CUSTOM_END_TIME = 1.0
 
-# IK 运行后，假设我们想读取的误差文件叫做 "_ik_marker_errors.sto"
+# After IK runs, assume we want to read the error file named "_ik_marker_errors.sto"
 IK_MARKER_ERRORS_FILE = r"_ik_marker_errors.sto"
 
 # =========================================================
-# STEP 1: 读取 IK 配置并加载模型
+# STEP 1: Read IK configuration and load model
 # =========================================================
 print("Loading IK setup from:", IK_SETUP_FILE)
 ik_tool = osim.InverseKinematicsTool(IK_SETUP_FILE)
@@ -39,48 +39,48 @@ else:
     print("Using time range from the IK setup file.")
 
 # =========================================================
-# STEP 2: 配置结果输出目录与文件名
+# STEP 2: Configure results output directory and file name
 # =========================================================
 ik_tool.setResultsDir(RESULTS_DIR)
 ik_tool.setOutputMotionFileName("ik_result.sto")
 
 # =========================================================
-# STEP 3: 运行 Inverse Kinematics
+# STEP 3: Run Inverse Kinematics
 # =========================================================
 print("Running Inverse Kinematics...")
 ik_tool.run()
 print("IK finished.\n")
 
 # =========================================================
-# STEP 4: 读取并绘制 IK 生成的标记误差结果 (测试)
+# STEP 4: Read and plot IK marker error results (test)
 # =========================================================
 errors_sto_path = f"{RESULTS_DIR}\\{IK_MARKER_ERRORS_FILE}"
 print("Attempting to read IK marker errors from:", errors_sto_path)
 
-# --- 以下为测试读取 + 绘图逻辑 ---
+# --- Test logic for reading + plotting ---
 try:
-    # 1) 用 TableProcessor 读取 .sto
+    # 1) Read .sto file using TableProcessor
     table_processor = osim.TableProcessor(errors_sto_path)
     table_errors = table_processor.process()
 
-    # 2) 打印列标签
+    # 2) Print column labels
     column_labels = table_errors.getColumnLabels()
     print("Columns found:", column_labels)
 
-    # 3) 取时间或帧号序列
+    # 3) Get time or frame number sequence
     x_values = table_errors.getIndependentColumn()
 
-    # 4) 自动检测常见误差列，如未找到则默认取第一列
+    # 4) Automatically detect common error columns, use first column if none found
     columns_to_plot = []
     for candidate in ["total_squared_error", "marker_error_RMS", "marker_error_max"]:
         if candidate in column_labels:
             columns_to_plot.append(candidate)
 
-    if not columns_to_plot:  # 没发现常见列，就画第一个列
+    if not columns_to_plot:  # No standard columns found, plot the first column
         print("No standard error columns found; will just plot the first column.")
         columns_to_plot = [column_labels[0]]
 
-    # 5) 绘图
+    # 5) Create plot
     fig, ax = plt.subplots(figsize=(8, 5))
     fig.suptitle("IK Marker Errors Test Plot")
 
