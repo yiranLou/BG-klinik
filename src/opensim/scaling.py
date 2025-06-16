@@ -6,11 +6,11 @@ import math
 
 
 class Conf:
-    """简化的配置类，用于测试目的"""
+    """Simplified configuration class for testing purposes"""
 
     def __init__(self, project_path):
         self.project_path = Path(project_path)
-        # 模拟配置数据
+        # Simulated configuration data
         self.data = {
             "test_participant": {
                 "mass": 70.0,
@@ -35,7 +35,7 @@ class Conf:
 
 class Scale:
     """
-    Scale tool in pyosim - pyosim中的缩放工具。
+    Scale tool in pyosim - Scaling tool in pyosim.
     """
 
     def __init__(
@@ -58,51 +58,51 @@ class Scale:
         self.static_path = static_path
         self.mass_input = mass_input
 
-        # 读取模型
+        # Load model
         self.model = osim.Model(model_input)
 
-        # 生成 ScaleTool 实例
+        # Generate ScaleTool instance
         self.scale_tool = osim.ScaleTool(xml_input)
         self.set_anthropometry(mass_input, height, age)
         self.scale_tool.getGenericModelMaker().setModelFileName(model_input)
 
-        # 设置时间范围（参考：静态标记数据）
+        # Set time range (reference: static marker data)
         self.time_range = self.time_range_from_static()
 
-        # 先添加几何文件搜索路径，避免出现找不到 .vtp 警告
+        # First add geometry file search paths to avoid .vtp file not found warnings
         orig_geom_dir = os.path.join(os.path.dirname(os.path.abspath(model_input)), "Geometry")
         out_geom_dir = os.path.join(os.path.dirname(os.path.abspath(model_output)), "Geometry")
         osim.ModelVisualizer.addDirToGeometrySearchPaths(orig_geom_dir)
         osim.ModelVisualizer.addDirToGeometrySearchPaths(out_geom_dir)
 
-        # 1. 运行模型缩放 (ModelScaler)
+        # 1. Run model scaling (ModelScaler)
         self.run_model_scaler(mass_input)
-        # 2. 手工计算一下缩放后的模型与静态标记的误差
+        # 2. Manually calculate error between scaled model and static markers
         self.compute_marker_error(
             model_path=self.model_output,
             trc_path=self.static_path,
-            label="模型缩放 (ModelScaler) 误差"
+            label="Model Scaling (ModelScaler) Error"
         )
 
-        # 3. 标记放置 (MarkerPlacer)
+        # 3. Marker placement (MarkerPlacer)
         self.run_marker_placer()
-        # 4. 手工计算一下放置标记后的模型与静态标记的误差
+        # 4. Manually calculate error between model with placed markers and static markers
         self.compute_marker_error(
             model_path=self.model_with_markers_output,
             trc_path=self.static_path,
-            label="标记放置 (MarkerPlacer) 误差"
+            label="Marker Placement (MarkerPlacer) Error"
         )
 
-        # 5. 选择性：合并其他模型
+        # 5. Optional: combine other models
         if add_model:
             self.combine_models(add_model)
 
-        # 6. 选择性：把原模型里未被使用的 markers 加回去
+        # 6. Optional: add back unused markers from original model
         if not remove_unused:
             self.add_unused_markers()
 
     def time_range_from_static(self):
-        """返回 [start_time, end_time]"""
+        """Return [start_time, end_time]"""
         md = osim.MarkerData(self.static_path)
         initial_time = md.getStartFrameTime()
         final_time = md.getLastFrameTime()
@@ -112,13 +112,13 @@ class Scale:
         return range_time
 
     def set_anthropometry(self, mass, height, age):
-        """设置被试者的体重、身高、年龄"""
+        """Set subject's weight, height, age"""
         self.scale_tool.setSubjectMass(mass)
         self.scale_tool.setSubjectHeight(height)
         self.scale_tool.setSubjectAge(age)
 
     def run_model_scaler(self, mass):
-        """执行模型缩放"""
+        """Execute model scaling"""
         model_scaler = self.scale_tool.getModelScaler()
         model_scaler.setApply(True)
         model_scaler.setMarkerFileName(self.static_path)
@@ -131,12 +131,12 @@ class Scale:
 
         model_scaler.processModel(self.model, "", mass)
 
-        # 4.5 API 不提供 getRMSMarkerError() 等函数，故不再调用
+        # 4.5 API does not provide getRMSMarkerError() functions, so no longer calling them
 
-        print("[INFO] 模型缩放 (ModelScaler) 已执行完毕.")
+        print("[INFO] Model scaling (ModelScaler) completed.")
 
     def run_marker_placer(self):
-        """执行标记放置 (MarkerPlacer)"""
+        """Execute marker placement (MarkerPlacer)"""
         scaled_model = osim.Model(self.model_output)
 
         marker_placer = self.scale_tool.getMarkerPlacer()
@@ -148,41 +148,41 @@ class Scale:
 
         marker_placer.processModel(scaled_model)
 
-        print("[INFO] 标记放置 (MarkerPlacer) 已执行完毕.")
+        print("[INFO] Marker placement (MarkerPlacer) completed.")
 
-        # 保存最终模型 & 更新后的配置
+        # Save final model & updated configuration
         scaled_model.printToXML(self.model_output)
         self.scale_tool.printToXML(self.xml_output)
 
-    def compute_marker_error(self, model_path, trc_path, label="Marker误差"):
+    def compute_marker_error(self, model_path, trc_path, label="Marker Error"):
         """
-        手工计算给定模型 (model_path) 与静态标记文件 (trc_path) 的 RMS / Max 误差。
+        Manually calculate RMS / Max error between given model (model_path) and static marker file (trc_path).
 
-        1) 读取并平均 .trc 文件，得到各marker在实验坐标系的平均位置(默认整个时段)。
-        2) 加载模型、initSystem()，对每个 Marker 用 getLocationInGround() 获取在世界系的坐标。
-        3) 比较两者差值，得到 RMS 和 Max 距离。
-        4) 打印结果。
+        1) Read and average .trc file to get average position of each marker in experimental coordinate system (default entire time period).
+        2) Load model, initSystem(), use getLocationInGround() for each Marker to get coordinates in world coordinate system.
+        3) Compare differences between the two to get RMS and Max distance.
+        4) Print results.
 
-        注意：若实验数据和模型单位不一致(如 mm vs m)，需要自行做单位转换。
+        Note: If experimental data and model units are inconsistent (e.g. mm vs m), unit conversion needs to be done manually.
         """
-        print(f"\n[INFO] 开始计算 {label} ...")
+        print(f"\n[INFO] Starting to calculate {label} ...")
 
-        # 1. 从 .trc 文件获取 “平均坐标”
+        # 1. Get "average coordinates" from .trc file
         avg_positions = self._get_average_marker_positions(trc_path)
 
-        # 2. 读取模型并初始化
+        # 2. Load model and initialize
         model = osim.Model(model_path)
         state = model.initSystem()
         marker_set = model.updMarkerSet()
 
-        # 3. 遍历模型中的每个Marker，计算和实验平均坐标的误差
+        # 3. Traverse each Marker in the model and calculate error with experimental average coordinates
         distances = []
         for i in range(marker_set.getSize()):
             mk = marker_set.get(i)
             mkName = mk.getName()
-            # 只计算在 trc 文件里存在的同名 marker
+            # Only calculate markers with the same name that exist in trc file
             if mkName in avg_positions:
-                # 得到模型中该 marker 在 ground 的坐标
+                # Get coordinates of this marker in ground coordinate system from model
                 loc = mk.getLocationInGround(state)  # SimTK.Vec3
                 dx = loc.get(0) - avg_positions[mkName][0]
                 dy = loc.get(1) - avg_positions[mkName][1]
@@ -191,36 +191,36 @@ class Scale:
                 distances.append(dist)
 
         if len(distances) == 0:
-            print(f"[WARN] 无可比对的标记，无法计算 {label}。")
+            print(f"[WARN] No comparable markers, unable to calculate {label}.")
             return
 
         rms_error = math.sqrt(sum(d * d for d in distances) / len(distances))
         max_error = max(distances)
 
-        print(f"[RESULT] {label} - 标记数: {len(distances)}")
+        print(f"[RESULT] {label} - Number of markers: {len(distances)}")
         print(f"         RMS Marker Error: {rms_error:.4f}")
         print(f"         Max Marker Error: {max_error:.4f}")
 
     def _get_average_marker_positions(self, trc_file):
         """
-        读取 .trc 文件 (MarkerData)，对所有帧做平均，返回 {markerName: [x_avg, y_avg, z_avg]} 字典。
+        Read .trc file (MarkerData), average all frames, return {markerName: [x_avg, y_avg, z_avg]} dictionary.
 
-        如果你的 .trc 是毫米而模型是米，请自行乘以 0.001 做单位转换。
+        If your .trc is in millimeters and model is in meters, please multiply by 0.001 for unit conversion manually.
         """
         md = osim.MarkerData(trc_file)
 
-        # 可能需要检查units，如 md.getUnits() == "mm" 时做转换，这里示例暂不处理
+        # May need to check units, e.g. when md.getUnits() == "mm" do conversion, not handled in this example
         markerNames = md.getMarkerNames()
         numMarkers = markerNames.getSize()
         numFrames = md.getNumFrames()
 
-        # 初始化累加器
+        # Initialize accumulators
         sums = {}
         for i in range(numMarkers):
             name = markerNames.get(i)
             sums[name] = [0.0, 0.0, 0.0]
 
-        # 累加每帧的 (x, y, z)
+        # Accumulate (x, y, z) for each frame
         for f in range(numFrames):
             frame = md.getFrame(f)
             for m in range(numMarkers):
@@ -230,7 +230,7 @@ class Scale:
                 sums[name][1] += pos.get(1)
                 sums[name][2] += pos.get(2)
 
-        # 取平均
+        # Take average
         avg_positions = {}
         for i in range(numMarkers):
             name = markerNames.get(i)
@@ -242,7 +242,7 @@ class Scale:
         return avg_positions
 
     def add_unused_markers(self):
-        """将原模型里未被使用的 Marker 加回最终模型(可选)。"""
+        """Add back unused Markers from original model to final model (optional)."""
         with_unused = osim.Model(self.model_output)
         without_unused = osim.Model(self.model_with_markers_output)
 
@@ -259,7 +259,7 @@ class Scale:
         without_unused.printToXML(self.model_with_markers_output)
 
     def combine_models(self, model_to_add):
-        """将其它模型合并进当前 scaled 模型（可选）。"""
+        """Combine other models into current scaled model (optional)."""
         base = osim.Model(self.model_output)
         add = osim.Model(model_to_add)
 
@@ -276,16 +276,16 @@ class Scale:
 
         base.initSystem()
 
-        # 也可以再加一次几何搜索路径
+        # Can also add geometry search path again
         orig_geom_dir = os.path.join(os.path.dirname(os.path.abspath(self.model_input)), "Geometry")
         osim.ModelVisualizer.addDirToGeometrySearchPaths(orig_geom_dir)
 
         base.printToXML(self.model_with_markers_output)
-        print(f"已将 {model_to_add} 合并至 {self.model_with_markers_output}")
+        print(f"Combined {model_to_add} into {self.model_with_markers_output}")
 
 
 def main():
-    print("开始运行OpenSim模型缩放示例...\n")
+    print("Starting OpenSim model scaling example...\n")
 
     model_input_path = r"C:\temporary_file\BG_klinik\newPipeline\config\models\ms_arm_and_hand-main\AAH Model\RightArmAndHand.osim"
     xml_input_path = r"C:\temporary_file\BG_klinik\newPipeline\config\models\ms_arm_and_hand-main\AAH Model\scaling_hansANDarms.xml"
@@ -297,7 +297,7 @@ def main():
 
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    # 从配置获取身高、体重、年龄
+    # Get height, weight, age from configuration
     conf = Conf(output_dir)
     try:
         mass = conf.get_conf_field("test_participant", ["mass"])
@@ -306,19 +306,19 @@ def main():
     except ValueError:
         mass, height, age = 70.0, 175.0, 30
 
-    print("=== 缩放配置 ===")
-    print(f"模型文件     : {model_input_path}")
-    print(f"配置文件     : {xml_input_path}")
-    print(f"静态标记文件 : {static_path}")
-    print(f"输出模型     : {model_output}")
-    print(f"输出配置     : {xml_output}")
-    print(f"体重         : {mass} kg")
-    print(f"身高         : {height} cm")
-    print(f"年龄         : {age} 岁\n")
+    print("=== Scaling Configuration ===")
+    print(f"Model file      : {model_input_path}")
+    print(f"Config file     : {xml_input_path}")
+    print(f"Static markers  : {static_path}")
+    print(f"Output model    : {model_output}")
+    print(f"Output config   : {xml_output}")
+    print(f"Weight          : {mass} kg")
+    print(f"Height          : {height} cm")
+    print(f"Age             : {age} years\n")
 
     try:
-        # 如果你的 scaling.xml 里使用单位米，那么应传入 height/100.0
-        # 如果它使用 cm，就用 height；若用 mm，就用 height*10 (示例)。
+        # If your scaling.xml uses meters, then pass height/100.0
+        # If it uses cm, use height; if mm, use height*10 (example).
         Scale(
             model_input=model_input_path,
             model_output=model_output,
@@ -326,17 +326,17 @@ def main():
             xml_output=xml_output,
             static_path=static_path,
             mass_input=mass,
-            height=height * 10,  # 请根据实际单位调整
+            height=height * 10,  # Please adjust according to actual units
             age=age,
             remove_unused=False
         )
-        print("\n模型缩放&手工误差计算完成!")
+        print("\nModel scaling & manual error calculation completed!")
     except Exception as e:
-        print(f"模型缩放过程中出错: {e}")
+        print(f"Error during model scaling process: {e}")
         import traceback;
         traceback.print_exc()
 
-    print("\n示例程序执行完毕")
+    print("\nExample program execution completed")
 
 
 if __name__ == "__main__":

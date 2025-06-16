@@ -1,11 +1,12 @@
 """
-EMG 处理模块。
-对动作C3D及MVIC C3D文件做滤波、整流和归一化，然后输出至指定目录下的 .sto 文件。
+EMG 处理模块 - 按照学术论文标准实现完整的EMG信号处理流程。
+对动作C3D及MVIC C3D文件做完整的6步处理：DC偏移移除、陷波滤波、高通滤波、小波去噪、全波整流、低通滤波包络提取和MVIC归一化。
 """
 
 import os
 import numpy as np
-from scipy.signal import find_peaks, sosfilt, butter
+from scipy.signal import find_peaks, sosfilt, butter, iirnotch, filtfilt
+import pywt
 import pyc3dserver as c3d
 
 # 如果需要调用你改好的 c3d_converter.py 中的函数
@@ -25,63 +26,235 @@ PROCESSED_DIR = os.path.join(PROJECT_ROOT, 'data', 'processed', 'emg_processed')
 if not os.path.exists(PROCESSED_DIR):
     os.makedirs(PROCESSED_DIR)
 
-# 你的4个MVIC文件路径（原C3D），如果你想要先做转换，可以在后面流程中调用 c3dtotrc
+# EMG处理参数（符合学术标准）
+EMG_PARAMS = {
+    'sampling_rate': 1500,          # 采样率 Hz
+    'notch_freq': 50,               # 陷波滤波频率 Hz (50Hz for Europe, 60Hz for North America)
+    'highpass_cutoff': 20,          # 高通滤波截止频率 Hz
+    'lowpass_cutoff': 6,            # 低通滤波截止频率 Hz (包络提取)
+    'filter_order': 4,              # 滤波器阶数
+    'wavelet_name': 'db4',          # 小波去噪使用的小波基
+    'wavelet_mode': 'symmetric'     # 小波边界模式
+}
+
+# MVIC文件路径
 MVIC_BICEPS_C3D  = os.path.join(MVIC_DIR, 'MVIC_Biceps_r.c3d')
 MVIC_TRICEPS_C3D = os.path.join(MVIC_DIR, 'MVIC_Triceps_r.c3d')
 MVIC_WRIST_EX_C3D   = os.path.join(MVIC_DIR, 'MVIC_wrist_ex_r.c3d')
 MVIC_WRIST_FLX_C3D  = os.path.join(MVIC_DIR, 'MVIC_wrist_flex_r.c3d')
 
-# 你的动作 C3D 文件（建议先用 c3d_converter.py 转换成 .trc/.mot，如果你想直接在这里做EMG处理，可以使用原C3D）
-# 假设你动作C3D也放在 raw\N10_n\right 里，比如 “ROM_Ellenbogenflex_R 1.c3d”
+# 动作C3D文件
 ACTION_C3D = os.path.join(RAW_DATA_DIR, 'right', 'ROM_Ellenbogenflex_R 1.c3d')
 
-# 最终 EMG 输出 .sto 文件路径
+# EMG输出文件
 EMG_OUT_FILE = os.path.join(PROCESSED_DIR, 'emg_norm.sto')
 
 ################################################################################
-# 带通滤波 & 整流
+# 学术标准EMG信号处理流程（6步法）
 ################################################################################
 
-def butter_bandpass(lowcut, highcut, fs, order=6):
+def remove_dc_offset(signal):
     """
-    构建带通滤波器(Butterworth)的二阶截断形式(sos)。
+    步骤1: 移除DC偏移 - 减去信号的均值
+    
+    Args:
+        signal (np.array): 原始EMG信号
+        
+    Returns:
+        np.array: 移除DC偏移后的信号
     """
-    nyq = 0.5 * fs
-    low = lowcut / nyq
-    high = highcut / nyq
-    sos = butter(order, [low, high], analog=False, btype='band', output='sos')
-    return sos
+    return signal - np.mean(signal)
 
-def butter_bandpass_filter(data, lowcut, highcut, fs, order=6):
+def notch_filter(signal, fs, notch_freq=50, quality_factor=30):
     """
-    应用带通滤波器，返回滤波后的信号。
+    步骤2: 陷波滤波 - 去除电力线干扰（50/60Hz）
+    
+    Args:
+        signal (np.array): 输入信号
+        fs (float): 采样频率
+        notch_freq (float): 陷波频率（50Hz欧洲，60Hz北美）
+        quality_factor (float): 品质因数，控制陷波宽度
+        
+    Returns:
+        np.array: 陷波滤波后的信号
     """
-    sos = butter_bandpass(lowcut, highcut, fs, order=order)
-    filtered = sosfilt(sos, data)
-    return filtered
+    # 设计IIR陷波滤波器
+    b, a = iirnotch(notch_freq, quality_factor, fs)
+    # 使用零相位滤波避免相位延迟
+    filtered_signal = filtfilt(b, a, signal)
+    return filtered_signal
 
-def emgfilter(data, fs=1500):
+def highpass_filter(signal, fs, cutoff=20, order=4):
     """
-    对EMG信号做15~500Hz带通滤波并取绝对值(全波整流)。
+    步骤3: 高通滤波 - 去除运动伪影和低频干扰
+    
+    Args:
+        signal (np.array): 输入信号
+        fs (float): 采样频率
+        cutoff (float): 截止频率 Hz
+        order (int): 滤波器阶数
+        
+    Returns:
+        np.array: 高通滤波后的信号
     """
-    lowcut = 15
-    highcut = 500
-    order = 6
-    filtered = butter_bandpass_filter(data, lowcut, highcut, fs, order)
-    rectified = np.abs(filtered)
-    return rectified
+    nyquist = 0.5 * fs
+    normal_cutoff = cutoff / nyquist
+    
+    # 设计Butterworth高通滤波器
+    b, a = butter(order, normal_cutoff, btype='high', analog=False)
+    # 使用零相位滤波
+    filtered_signal = filtfilt(b, a, signal)
+    return filtered_signal
+
+def wavelet_denoise(signal, wavelet='db4', sigma=None):
+    """
+    步骤4: 小波去噪 - 去除随机噪声同时保持信号特征
+    
+    Args:
+        signal (np.array): 输入信号
+        wavelet (str): 小波基函数
+        sigma (float): 噪声标准差估计，None时自动估计
+        
+    Returns:
+        np.array: 去噪后的信号
+    """
+    # 小波分解
+    coeffs = pywt.wavedec(signal, wavelet, mode='symmetric')
+    
+    # 估计噪声标准差（使用最高频系数）
+    if sigma is None:
+        sigma = np.median(np.abs(coeffs[-1])) / 0.6745
+    
+    # 软阈值去噪
+    threshold = sigma * np.sqrt(2 * np.log(len(signal)))
+    coeffs_thresh = coeffs.copy()
+    coeffs_thresh[1:] = [pywt.threshold(detail, threshold, mode='soft') 
+                        for detail in coeffs_thresh[1:]]
+    
+    # 小波重构
+    denoised_signal = pywt.waverec(coeffs_thresh, wavelet, mode='symmetric')
+    
+    # 确保输出长度与输入相同
+    if len(denoised_signal) != len(signal):
+        denoised_signal = denoised_signal[:len(signal)]
+    
+    return denoised_signal
+
+def full_wave_rectification(signal):
+    """
+    步骤5: 全波整流 - 取信号的绝对值
+    
+    Args:
+        signal (np.array): 输入信号
+        
+    Returns:
+        np.array: 整流后的信号
+    """
+    return np.abs(signal)
+
+def lowpass_envelope(signal, fs, cutoff=6, order=4):
+    """
+    步骤6: 低通滤波 - 创建线性包络
+    
+    Args:
+        signal (np.array): 整流后的信号
+        fs (float): 采样频率
+        cutoff (float): 截止频率 Hz
+        order (int): 滤波器阶数
+        
+    Returns:
+        np.array: 包络信号
+    """
+    nyquist = 0.5 * fs
+    normal_cutoff = cutoff / nyquist
+    
+    # 设计Butterworth低通滤波器
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    # 使用零相位滤波
+    envelope = filtfilt(b, a, signal)
+    return envelope
+
+def emg_process_academic_standard(signal, fs=1500):
+    """
+    按照学术论文标准的完整EMG信号处理流程
+    
+    实现步骤：
+    1. 移除DC偏移
+    2. 陷波滤波（50/60Hz）
+    3. 高通滤波（20Hz）
+    4. 小波去噪
+    5. 全波整流
+    6. 低通滤波包络（6Hz）
+    
+    Args:
+        signal (np.array): 原始EMG信号
+        fs (float): 采样频率
+        
+    Returns:
+        dict: 包含各步骤处理结果的字典
+    """
+    if signal is None or len(signal) == 0:
+        return {
+            'raw': np.array([]),
+            'dc_removed': np.array([]),
+            'notch_filtered': np.array([]),
+            'highpass_filtered': np.array([]),
+            'denoised': np.array([]),
+            'rectified': np.array([]),
+            'envelope': np.array([])
+        }
+    
+    results = {'raw': signal}
+    
+    # 步骤1: 移除DC偏移
+    print("  - 步骤1: 移除DC偏移")
+    dc_removed = remove_dc_offset(signal)
+    results['dc_removed'] = dc_removed
+    
+    # 步骤2: 陷波滤波
+    print("  - 步骤2: 陷波滤波 (50Hz)")
+    notch_filtered = notch_filter(dc_removed, fs, EMG_PARAMS['notch_freq'])
+    results['notch_filtered'] = notch_filtered
+    
+    # 步骤3: 高通滤波
+    print("  - 步骤3: 高通滤波 (20Hz)")
+    highpass_filtered = highpass_filter(notch_filtered, fs, EMG_PARAMS['highpass_cutoff'])
+    results['highpass_filtered'] = highpass_filtered
+    
+    # 步骤4: 小波去噪
+    print("  - 步骤4: 小波去噪")
+    denoised = wavelet_denoise(highpass_filtered, EMG_PARAMS['wavelet_name'])
+    results['denoised'] = denoised
+    
+    # 步骤5: 全波整流
+    print("  - 步骤5: 全波整流")
+    rectified = full_wave_rectification(denoised)
+    results['rectified'] = rectified
+    
+    # 步骤6: 低通滤波包络
+    print("  - 步骤6: 低通滤波包络 (6Hz)")
+    envelope = lowpass_envelope(rectified, fs, EMG_PARAMS['lowpass_cutoff'])
+    results['envelope'] = envelope
+    
+    return results
 
 ################################################################################
-# 计算MVIC峰值
+# 计算MVIC峰值（改进版）
 ################################################################################
 
-def normalize_emg(muscle_name, mvic_c3d_path):
+def normalize_emg_academic(muscle_name, mvic_c3d_path):
     """
-    对给定肌肉的MVIC c3d做滤波整流并找到最大持续>=100ms的峰值(用于归一化分母)。
-
-    返回：
-        max_value: float 或 None，如果找不到峰值返回None
+    使用学术标准处理MVIC数据并找到最大持续峰值用于归一化
+    
+    Args:
+        muscle_name (str): 肌肉通道名称
+        mvic_c3d_path (str): MVIC C3D文件路径
+        
+    Returns:
+        float or None: MVIC最大值，用于归一化
     """
+    print(f"处理MVIC数据: {muscle_name}")
+    
     # 打开MVIC C3D
     itf = c3d.c3dserver()
     ret = c3d.open_c3d(itf, mvic_c3d_path)
@@ -94,216 +267,287 @@ def normalize_emg(muscle_name, mvic_c3d_path):
         print(f"[WARN] {mvic_c3d_path} 中未找到肌肉通道: {muscle_name}")
         return None
 
-    # 过滤 & 整流
-    analog_data_mvic = emgfilter(analog_data_mvic, fs=1500)
-
-    # 假设 1点=1ms(只是示例)，或你可以根据实际的 c3d.get_analog_rate(itf) 做换算
-    # 这里 frame_rate=1 并不准确，需要你根据实际的MVIC采样率做变更。
-    # 可以改成： frame_rate = c3d.get_analog_rate(itf)
-    # 不过你在关了c3d后，就拿不到它了，所以要先取到再关
-    # 这里姑且保持与原脚本相同写法(但这样的话非常可能不准确!)
-    frame_rate = 1
-
-    # 至少持续100ms -> 100ms = int(0.1*采样率)
-    num_points = int((250 / 1000) * frame_rate)  # 原脚本写的 100ms = 250ms???
-    # 你可以改成： num_points = int(0.1 * actual_sampling_rate)
-
-    # find_peaks: 只找>=最大值*0.2的峰
-    peaks, _ = find_peaks(analog_data_mvic, height=np.max(analog_data_mvic)*0.2)
-    if len(peaks) == 0:
-        print(f"[INFO] 未在 {mvic_c3d_path} 找到任何满足20%阈值的峰。")
+    # 使用学术标准处理EMG信号
+    processed_results = emg_process_academic_standard(analog_data_mvic, EMG_PARAMS['sampling_rate'])
+    
+    # 使用最终的包络信号进行峰值检测
+    envelope_signal = processed_results['envelope']
+    
+    if len(envelope_signal) == 0:
+        print(f"[WARN] 处理后的信号为空: {muscle_name}")
         return None
 
-    max_value = -np.inf
-    N = len(analog_data_mvic)
+    # 寻找持续时间>=100ms的峰值
+    frame_rate = EMG_PARAMS['sampling_rate']
+    min_duration_ms = 100
+    num_points = int((min_duration_ms / 1000) * frame_rate)
 
+    # 寻找峰值（至少为最大值的20%）
+    peaks, _ = find_peaks(envelope_signal, height=np.max(envelope_signal) * 0.2)
+    
+    if len(peaks) == 0:
+        print(f"[INFO] 未找到满足阈值的峰值: {muscle_name}")
+        return np.max(envelope_signal)  # 返回整个信号的最大值
+
+    max_value = -np.inf
+    N = len(envelope_signal)
+
+    # 检查每个峰值的持续时间
     for peak in peaks:
         left = peak
         right = peak
-        # 向左
-        while left > 0 and analog_data_mvic[left - 1] > analog_data_mvic[left]:
+        
+        # 向左寻找下降点
+        while left > 0 and envelope_signal[left - 1] >= envelope_signal[left]:
             left -= 1
-        # 向右
-        while right < (N - 1) and analog_data_mvic[right + 1] > analog_data_mvic[right]:
+        
+        # 向右寻找下降点
+        while right < (N - 1) and envelope_signal[right + 1] >= envelope_signal[right]:
             right += 1
 
         plateau_duration = right - left + 1
+        
         if plateau_duration >= num_points:
-            if analog_data_mvic[peak] > max_value:
-                max_value = analog_data_mvic[peak]
+            if envelope_signal[peak] > max_value:
+                max_value = envelope_signal[peak]
+                print(f"  找到有效峰值: {envelope_signal[peak]:.4f}, 持续时间: {plateau_duration}点 ({plateau_duration/frame_rate*1000:.1f}ms)")
 
     if max_value == -np.inf:
-        print(f"[INFO] 虽然找到峰，但没有持续 >= {num_points} 点的峰。")
-        return None
+        print(f"[INFO] 未找到持续时间>=100ms的峰值，使用全局最大值: {muscle_name}")
+        return np.max(envelope_signal)
 
     return max_value
 
 ################################################################################
-# 读取动作C3D中的EMG并做归一化
+# 读取动作C3D中的EMG并做归一化（改进版）
 ################################################################################
 
-def emgdata_elbow_r(c3d_path, mvic_bi, mvic_tri, mvic_flx, mvic_ex):
+def emgdata_elbow_r_academic(c3d_path, mvic_bi, mvic_tri, mvic_flx, mvic_ex):
     """
-    右侧肘部肌肉归一化EMG。
-
-    返回 (columns, data)，可写入 .sto。
+    使用学术标准处理右侧肘部肌肉EMG信号并进行MVIC归一化
+    
+    Args:
+        c3d_path (str): 动作C3D文件路径
+        mvic_bi (str): 二头肌MVIC文件路径
+        mvic_tri (str): 三头肌MVIC文件路径
+        mvic_flx (str): 腕屈肌MVIC文件路径
+        mvic_ex (str): 腕伸肌MVIC文件路径
+        
+    Returns:
+        tuple: (columns, data) - 列名和数据，可写入.sto文件
     """
+    print("处理右侧肘部EMG数据...")
+    
     # 打开动作C3D
     itf = c3d.c3dserver()
     ret = c3d.open_c3d(itf, c3d_path)
 
-    # 读取通道
-    sig_biceps = c3d.get_analog_data_unscaled(itf, 'R_Biceps')
-    sig_triceps = c3d.get_analog_data_unscaled(itf, 'R_Triceps')
-    sig_wrist_flex = c3d.get_analog_data_unscaled(itf, 'R_Wrist_Flex')
-    sig_wrist_ext  = c3d.get_analog_data_unscaled(itf, 'R_Wrist_Ex')
+    # 读取各肌肉通道
+    muscle_channels = {
+        'biceps': 'R_Biceps',
+        'triceps': 'R_Triceps', 
+        'wrist_flex': 'R_Wrist_Flex',
+        'wrist_ext': 'R_Wrist_Ex'
+    }
+    
+    raw_signals = {}
+    for muscle, channel in muscle_channels.items():
+        raw_signals[muscle] = c3d.get_analog_data_unscaled(itf, channel)
+        if raw_signals[muscle] is None:
+            print(f"[WARN] 未找到通道: {channel}")
+            raw_signals[muscle] = np.array([])
 
-    times = c3d.get_analog_times(itf)  # 时间向量
-
-    # 关闭C3D
-    c3d.close_c3d(itf)
-
-    # 滤波整流
-    if sig_biceps is not None:
-        sig_biceps = emgfilter(sig_biceps, fs=1500)
-    else:
-        sig_biceps = np.zeros(1)
-
-    if sig_triceps is not None:
-        sig_triceps = emgfilter(sig_triceps, fs=1500)
-    else:
-        sig_triceps = np.zeros(1)
-
-    if sig_wrist_flex is not None:
-        sig_wrist_flex = emgfilter(sig_wrist_flex, fs=1500)
-    else:
-        sig_wrist_flex = np.zeros(1)
-
-    if sig_wrist_ext is not None:
-        sig_wrist_ext = emgfilter(sig_wrist_ext, fs=1500)
-    else:
-        sig_wrist_ext = np.zeros(1)
-
-    # 计算 MVIC 基准
-    norm_bi  = normalize_emg('R_Biceps', mvic_bi)
-    norm_tri = normalize_emg('R_Triceps', mvic_tri)
-    norm_flx = normalize_emg('R_Wrist_Flex', mvic_flx)
-    norm_ex  = normalize_emg('R_Wrist_Ex', mvic_ex)
-
-    # 如果 MVIC 全部找不到，就强制用实验峰
-    # （或者你可以让其为 None，再判断）
-    if norm_bi  is None: norm_bi  = np.max(sig_biceps)
-    if norm_tri is None: norm_tri = np.max(sig_triceps)
-    if norm_flx is None: norm_flx = np.max(sig_wrist_flex)
-    if norm_ex  is None: norm_ex  = np.max(sig_wrist_ext)
-
-    # 实验中最大值
-    max_bi  = np.max(sig_biceps)
-    max_tri = np.max(sig_triceps)
-    max_flx = np.max(sig_wrist_flex)
-    max_ex  = np.max(sig_wrist_ext)
-
-    # 归一化
-    def normalize_signal(signal, val_mvic):
-        if len(signal) == 0:
-            return []
-        peak_exp = np.max(signal)
-        denom = val_mvic if peak_exp < val_mvic else peak_exp
-        return np.abs(signal) / denom if denom != 0 else signal
-
-    sig_biceps = normalize_signal(sig_biceps, norm_bi)
-    sig_triceps = normalize_signal(sig_triceps, norm_tri)
-    sig_wrist_flex = normalize_signal(sig_wrist_flex, norm_flx)
-    sig_wrist_ext  = normalize_signal(sig_wrist_ext, norm_ex)
-
-    columns = [
-        "time",
-        "BIClong", "BICshort", "BRA",
-        "TRIlong", "TRIlat", "TRImed",
-        "ECRL", "ECRB", "ECU",
-        "FCR", "FCU"
-    ]
-    data = [
-        times,
-        sig_biceps, sig_biceps, sig_biceps,  # 先都用同一个信号示例
-        sig_triceps, sig_triceps, sig_triceps,
-        sig_wrist_ext, sig_wrist_ext, sig_wrist_ext,
-        sig_wrist_flex, sig_wrist_flex
-    ]
-    return columns, data
-
-def emgdata_elbow_l(c3d_path, mvic_bi, mvic_tri, mvic_flx, mvic_ex):
-    """
-    左侧肘部类似写法...
-    """
-    # 类似 emgdata_elbow_r，不再赘述
-    # 你可以复制 r 版本并把通道名 'R_' 替换成 'L_'
-    # 下面简要写一下
-
-    itf = c3d.c3dserver()
-    c3d.open_c3d(itf, c3d_path)
-    sig_biceps = c3d.get_analog_data_unscaled(itf, 'L_Biceps_Brachii')
-    sig_triceps = c3d.get_analog_data_unscaled(itf, 'L_Triceps_Brachii')
-    sig_wrist_flex = c3d.get_analog_data_unscaled(itf, 'L_Hand_Beuger_FCR')
-    sig_wrist_ext  = c3d.get_analog_data_unscaled(itf, 'L_Hand_Strecker')
     times = c3d.get_analog_times(itf)
     c3d.close_c3d(itf)
 
-    # 滤波整流
-    sig_biceps = emgfilter(sig_biceps) if sig_biceps is not None else np.zeros(1)
-    sig_triceps = emgfilter(sig_triceps) if sig_triceps is not None else np.zeros(1)
-    sig_wrist_flex = emgfilter(sig_wrist_flex) if sig_wrist_flex is not None else np.zeros(1)
-    sig_wrist_ext  = emgfilter(sig_wrist_ext)  if sig_wrist_ext  is not None else np.zeros(1)
+    # 使用学术标准处理每个肌肉信号
+    processed_signals = {}
+    for muscle, signal in raw_signals.items():
+        print(f"处理 {muscle} 信号...")
+        processed_results = emg_process_academic_standard(signal, EMG_PARAMS['sampling_rate'])
+        processed_signals[muscle] = processed_results['envelope']  # 使用最终的包络信号
 
-    # MVIC
-    norm_bi  = normalize_emg('L_Biceps_Brachii', mvic_bi)
-    norm_tri = normalize_emg('L_Triceps_Brachii', mvic_tri)
-    norm_flx = normalize_emg('L_Hand_Beuger_FCR', mvic_flx)
-    norm_ex  = normalize_emg('L_Hand_Strecker', mvic_ex)
+    # 计算MVIC归一化因子
+    print("计算MVIC归一化因子...")
+    mvic_values = {
+        'biceps': normalize_emg_academic('R_Biceps', mvic_bi),
+        'triceps': normalize_emg_academic('R_Triceps', mvic_tri),
+        'wrist_flex': normalize_emg_academic('R_Wrist_Flex', mvic_flx),
+        'wrist_ext': normalize_emg_academic('R_Wrist_Ex', mvic_ex)
+    }
 
-    if norm_bi  is None: norm_bi  = np.max(sig_biceps)
-    if norm_tri is None: norm_tri = np.max(sig_triceps)
-    if norm_flx is None: norm_flx = np.max(sig_wrist_flex)
-    if norm_ex  is None: norm_ex  = np.max(sig_wrist_ext)
+    # 归一化信号
+    def normalize_signal_academic(signal, mvic_value):
+        """改进的归一化函数"""
+        if len(signal) == 0 or mvic_value is None or mvic_value == 0:
+            return signal
+        
+        exp_max = np.max(signal)
+        # 如果实验中的最大值超过MVIC，使用实验最大值作为分母
+        denominator = max(mvic_value, exp_max)
+        
+        normalized = signal / denominator
+        print(f"    归一化: MVIC={mvic_value:.4f}, 实验最大值={exp_max:.4f}, 使用分母={denominator:.4f}")
+        
+        return normalized
 
-    def normalize_signal(signal, val_mvic):
-        peak_exp = np.max(signal)
-        denom = val_mvic if peak_exp < val_mvic else peak_exp
-        return np.abs(signal) / denom if denom != 0 else signal
+    # 执行归一化
+    normalized_signals = {}
+    for muscle in processed_signals.keys():
+        print(f"归一化 {muscle} 信号...")
+        normalized_signals[muscle] = normalize_signal_academic(
+            processed_signals[muscle], 
+            mvic_values[muscle]
+        )
 
-    sig_biceps = normalize_signal(sig_biceps, norm_bi)
-    sig_triceps = normalize_signal(sig_triceps, norm_tri)
-    sig_wrist_flex = normalize_signal(sig_wrist_flex, norm_flx)
-    sig_wrist_ext  = normalize_signal(sig_wrist_ext, norm_ex)
-
+    # 构建输出数据结构
     columns = [
         "time",
-        "BIClong", "BICshort", "BRA",
-        "TRIlong", "TRIlat", "TRImed",
-        "ECRL", "ECRB", "ECU",
-        "FCR", "FCU"
+        "BIClong", "BICshort", "BRA",           # 肘屈肌群
+        "TRIlong", "TRIlat", "TRImed",          # 肘伸肌群  
+        "ECRL", "ECRB", "ECU",                  # 腕伸肌群
+        "FCR", "FCU"                            # 腕屈肌群
     ]
+    
     data = [
         times,
-        sig_biceps, sig_biceps, sig_biceps,
-        sig_triceps, sig_triceps, sig_triceps,
-        sig_wrist_ext, sig_wrist_ext, sig_wrist_ext,
-        sig_wrist_flex, sig_wrist_flex
+        normalized_signals['biceps'], normalized_signals['biceps'], normalized_signals['biceps'],
+        normalized_signals['triceps'], normalized_signals['triceps'], normalized_signals['triceps'],
+        normalized_signals['wrist_ext'], normalized_signals['wrist_ext'], normalized_signals['wrist_ext'],
+        normalized_signals['wrist_flex'], normalized_signals['wrist_flex']
     ]
+    
+    return columns, data
+
+def emgdata_elbow_l_academic(c3d_path, mvic_bi, mvic_tri, mvic_flx, mvic_ex):
+    """
+    使用学术标准处理左侧肘部肌肉EMG信号并进行MVIC归一化
+    
+    Args:
+        c3d_path (str): 动作C3D文件路径
+        mvic_bi (str): 二头肌MVIC文件路径
+        mvic_tri (str): 三头肌MVIC文件路径
+        mvic_flx (str): 腕屈肌MVIC文件路径
+        mvic_ex (str): 腕伸肌MVIC文件路径
+        
+    Returns:
+        tuple: (columns, data) - 列名和数据，可写入.sto文件
+    """
+    print("处理左侧肘部EMG数据...")
+    
+    # 打开动作C3D
+    itf = c3d.c3dserver()
+    ret = c3d.open_c3d(itf, c3d_path)
+
+    # 读取各肌肉通道（左侧通道名可能不同）
+    muscle_channels = {
+        'biceps': 'L_Biceps_Brachii',
+        'triceps': 'L_Triceps_Brachii', 
+        'wrist_flex': 'L_Hand_Beuger_FCR',
+        'wrist_ext': 'L_Hand_Strecker'
+    }
+    
+    raw_signals = {}
+    for muscle, channel in muscle_channels.items():
+        raw_signals[muscle] = c3d.get_analog_data_unscaled(itf, channel)
+        if raw_signals[muscle] is None:
+            print(f"[WARN] 未找到通道: {channel}")
+            raw_signals[muscle] = np.array([])
+
+    times = c3d.get_analog_times(itf)
+    c3d.close_c3d(itf)
+
+    # 使用学术标准处理每个肌肉信号
+    processed_signals = {}
+    for muscle, signal in raw_signals.items():
+        print(f"处理 {muscle} 信号...")
+        processed_results = emg_process_academic_standard(signal, EMG_PARAMS['sampling_rate'])
+        processed_signals[muscle] = processed_results['envelope']  # 使用最终的包络信号
+
+    # 计算MVIC归一化因子（使用对应的左侧通道名）
+    print("计算MVIC归一化因子...")
+    mvic_values = {
+        'biceps': normalize_emg_academic('L_Biceps_Brachii', mvic_bi),
+        'triceps': normalize_emg_academic('L_Triceps_Brachii', mvic_tri),
+        'wrist_flex': normalize_emg_academic('L_Hand_Beuger_FCR', mvic_flx),
+        'wrist_ext': normalize_emg_academic('L_Hand_Strecker', mvic_ex)
+    }
+
+    # 归一化信号
+    def normalize_signal_academic(signal, mvic_value):
+        """改进的归一化函数"""
+        if len(signal) == 0 or mvic_value is None or mvic_value == 0:
+            return signal
+        
+        exp_max = np.max(signal)
+        # 如果实验中的最大值超过MVIC，使用实验最大值作为分母
+        denominator = max(mvic_value, exp_max)
+        
+        normalized = signal / denominator
+        print(f"    归一化: MVIC={mvic_value:.4f}, 实验最大值={exp_max:.4f}, 使用分母={denominator:.4f}")
+        
+        return normalized
+
+    # 执行归一化
+    normalized_signals = {}
+    for muscle in processed_signals.keys():
+        print(f"归一化 {muscle} 信号...")
+        normalized_signals[muscle] = normalize_signal_academic(
+            processed_signals[muscle], 
+            mvic_values[muscle]
+        )
+
+    # 构建输出数据结构
+    columns = [
+        "time",
+        "BIClong", "BICshort", "BRA",           # 肘屈肌群
+        "TRIlong", "TRIlat", "TRImed",          # 肘伸肌群  
+        "ECRL", "ECRB", "ECU",                  # 腕伸肌群
+        "FCR", "FCU"                            # 腕屈肌群
+    ]
+    
+    data = [
+        times,
+        normalized_signals['biceps'], normalized_signals['biceps'], normalized_signals['biceps'],
+        normalized_signals['triceps'], normalized_signals['triceps'], normalized_signals['triceps'],
+        normalized_signals['wrist_ext'], normalized_signals['wrist_ext'], normalized_signals['wrist_ext'],
+        normalized_signals['wrist_flex'], normalized_signals['wrist_flex']
+    ]
+    
     return columns, data
 
 ################################################################################
 # 主函数/入口
 ################################################################################
 
-def process_emg(side_is_right=True):
+def process_emg_academic_standard(side_is_right=True):
     """
-    根据侧别选择 r/l 函数，对动作C3D + 四个MVIC文件做处理，然后把EMG写到 .sto。
+    使用学术标准的EMG处理流程：根据侧别选择处理函数，对动作C3D + 四个MVIC文件做完整的6步处理
+    
+    处理步骤：
+    1. DC偏移移除
+    2. 陷波滤波（50/60Hz）
+    3. 高通滤波（20Hz）
+    4. 小波去噪
+    5. 全波整流
+    6. 低通滤波包络（6Hz）
+    7. MVIC归一化
+    
+    Args:
+        side_is_right (bool): True为右侧，False为左侧
     """
-    # 侧别
+    print(f"=== 开始学术标准EMG处理流程 ({'右侧' if side_is_right else '左侧'}) ===")
+    
+    # 打印处理参数
+    print("EMG处理参数:")
+    for key, value in EMG_PARAMS.items():
+        print(f"  {key}: {value}")
+    print()
+    
+    # 侧别选择
     if side_is_right:
-        # 调用右侧
-        cols, dat = emgdata_elbow_r(
+        print("使用右侧肘部EMG处理函数...")
+        cols, dat = emgdata_elbow_r_academic(
             c3d_path=ACTION_C3D,
             mvic_bi=MVIC_BICEPS_C3D,
             mvic_tri=MVIC_TRICEPS_C3D,
@@ -311,8 +555,8 @@ def process_emg(side_is_right=True):
             mvic_ex=MVIC_WRIST_EX_C3D
         )
     else:
-        # 调用左侧
-        cols, dat = emgdata_elbow_l(
+        print("使用左侧肘部EMG处理函数...")
+        cols, dat = emgdata_elbow_l_academic(
             c3d_path=ACTION_C3D,
             mvic_bi=MVIC_BICEPS_C3D,
             mvic_tri=MVIC_TRICEPS_C3D,
@@ -320,39 +564,53 @@ def process_emg(side_is_right=True):
             mvic_ex=MVIC_WRIST_EX_C3D
         )
 
-    # 把结果写到 emg_norm.sto (或你想要的其他文件名)
+    # 写入结果到.sto文件
+    print(f"\n写入EMG数据到: {EMG_OUT_FILE}")
     if os.path.exists(EMG_OUT_FILE):
-        print(f"[INFO] 文件已存在，将在末尾添加新列。 => {EMG_OUT_FILE}")
+        print("[INFO] 文件已存在，将添加新列")
     else:
-        print(f"[INFO] 文件不存在，将新建文件。 => {EMG_OUT_FILE}")
+        print("[INFO] 创建新的EMG文件")
 
-    # 这里复用 c3d_converter.py 中的 add_column_to_file
-    # 这个函数的签名是 add_column_to_file(file_path, new_column_name, new_column_data)
+    # 使用c3d_converter中的函数写入数据
     add_column_to_file(
         file_path=EMG_OUT_FILE,
         new_column_name=cols,
         new_column_data=dat
     )
-    print(f"[INFO] EMG 数据已写入: {EMG_OUT_FILE}")
+    print(f"[SUCCESS] EMG数据已成功写入: {EMG_OUT_FILE}")
 
+# 保持向后兼容的旧函数（已弃用）
+def process_emg(side_is_right=True):
+    """
+    向后兼容函数 - 建议使用 process_emg_academic_standard()
+    """
+    print("[DEPRECATED] 此函数已弃用，建议使用 process_emg_academic_standard()")
+    print("自动切换到学术标准处理流程...")
+    process_emg_academic_standard(side_is_right)
 
 # 只有在直接运行这个脚本时，才会执行下面的示例
 if __name__ == '__main__':
-    print("=== 开始 EMG 处理流程 ===")
+    print("=== EMG信号处理模块 - 学术标准实现 ===")
+    print("实现论文中描述的完整6步EMG处理流程:")
+    print("1. DC偏移移除")
+    print("2. 陷波滤波（50/60Hz电力线干扰）")
+    print("3. 高通滤波（20Hz截止频率）")
+    print("4. 小波去噪")
+    print("5. 全波整流")
+    print("6. 低通滤波包络（6Hz截止频率）")
+    print("7. MVIC归一化")
+    print()
 
-    # 如果你想先转换你的MVIC C3D到TRC/MOT，可以在这里做：
-    # 例如：
-    # from c3d_converter import c3dtotrc
-    # trc_bi, mot_bi = c3dtotrc(MVIC_BICEPS_C3D, PROCESSED_DIR)
-    # trc_tri, mot_tri = c3dtotrc(MVIC_TRICEPS_C3D, PROCESSED_DIR)
-    # ... etc
-    #
-    # 但是对 EMG 而言，你可能只需要读原C3D的模拟通道即可。
+    # 检查依赖包
+    try:
+        import pywt
+        print("✓ PyWavelets (小波分析包) 已安装")
+    except ImportError:
+        print("✗ 缺少依赖: PyWavelets")
+        print("请安装: pip install PyWavelets")
+        exit(1)
 
-    # 同理，对动作C3D先转换到TRC/MOT，也可在这里：
-    # action_trc, action_mot = c3dtotrc(ACTION_C3D, PROCESSED_DIR)
+    # 执行学术标准EMG处理
+    process_emg_academic_standard(side_is_right=True)
 
-    # 直接进行 EMG 提取和归一化
-    process_emg(side_is_right=True)
-
-    print("=== EMG 处理流程结束 ===")
+    print("=== EMG处理流程完成 ===")

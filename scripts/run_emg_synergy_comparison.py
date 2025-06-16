@@ -28,10 +28,10 @@ warnings.filterwarnings('ignore')
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from newPipeline.src.neural_network.data_loader import MotionDataLoader
-from src.neural_network.data_loader_emg import EMGDataLoader
-from src.neural_network.models import AttentionLSTM, create_improved_model
-from src.neural_network.trainer import ImprovedTrainer
-from src.neural_network.evaluator import ModelEvaluator
+from newPipeline.src.neural_network.data_loader_emg import EMGDataLoader
+from newPipeline.src.neural_network.models import AttentionLSTM, create_improved_model
+from newPipeline.src.neural_network.trainer import ImprovedTrainer
+from newPipeline.src.neural_network.evaluator import ModelEvaluator
 
 
 class DetailedModelEvaluator(ModelEvaluator):

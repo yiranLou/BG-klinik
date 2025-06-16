@@ -1,12 +1,23 @@
+import os
 import opensim as osim
 import matplotlib.pyplot as plt
+
+# Get project root directory
+def get_project_root():
+    """Get the project root directory (newPipeline)"""
+    current_file = os.path.abspath(__file__)
+    # Navigate up from src/opensim/inverse_kinematics.py to newPipeline/
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+    return project_root
+
+PROJECT_ROOT = get_project_root()
 
 # =========================================================
 # STEP 0: User settings that can be modified here
 # =========================================================
-IK_SETUP_FILE = r"C:\temporary_file\BG_klinik\newPipeline\config\setup\IK_setup_N10.xml"
-SCALED_MODEL_FILE = r"C:\temporary_file\BG_klinik\newPipeline\config\models\ms_arm_and_hand-main\AAH Model\RightArmAndHand_scaled.osim"
-RESULTS_DIR = r"C:\temporary_file\BG_klinik\newPipeline\data\processed\Ik_result\ikTOtest"
+IK_SETUP_FILE = os.path.join(PROJECT_ROOT, "config", "setup", "IK_setup_N10.xml")
+SCALED_MODEL_FILE = os.path.join(PROJECT_ROOT, "config", "models", "ms_arm_and_hand-main", "AAH Model", "RightArmAndHand_scaled.osim")
+RESULTS_DIR = os.path.join(PROJECT_ROOT, "data", "processed", "Ik_result", "ikTOtest")
 
 # Whether to use custom time range (overrides startTime and endTime in IK_setup.xml)
 USE_CUSTOM_TIME_RANGE = False
@@ -14,7 +25,15 @@ CUSTOM_START_TIME = 0.0
 CUSTOM_END_TIME = 1.0
 
 # After IK runs, assume we want to read the error file named "_ik_marker_errors.sto"
-IK_MARKER_ERRORS_FILE = r"_ik_marker_errors.sto"
+IK_MARKER_ERRORS_FILE = "_ik_marker_errors.sto"
+
+# Ensure results directory exists
+os.makedirs(RESULTS_DIR, exist_ok=True)
+
+print(f"Project root: {PROJECT_ROOT}")
+print(f"IK setup file: {IK_SETUP_FILE}")
+print(f"Scaled model file: {SCALED_MODEL_FILE}")
+print(f"Results directory: {RESULTS_DIR}")
 
 # =========================================================
 # STEP 1: Read IK configuration and load model
@@ -54,7 +73,7 @@ print("IK finished.\n")
 # =========================================================
 # STEP 4: Read and plot IK marker error results (test)
 # =========================================================
-errors_sto_path = f"{RESULTS_DIR}\\{IK_MARKER_ERRORS_FILE}"
+errors_sto_path = os.path.join(RESULTS_DIR, IK_MARKER_ERRORS_FILE)
 print("Attempting to read IK marker errors from:", errors_sto_path)
 
 # --- Test logic for reading + plotting ---

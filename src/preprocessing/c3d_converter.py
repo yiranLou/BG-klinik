@@ -1,6 +1,6 @@
 """
-C3D文件转换模块。
-处理C3D文件与OpenSim格式之间的转换。
+C3D file conversion module.
+Handles conversion between C3D files and OpenSim formats.
 """
 
 import os
@@ -8,31 +8,31 @@ import numpy as np
 import pyc3dserver as c3d
 from scipy.spatial.transform import Rotation as R
 
-# 项目根目录的相对路径
+# Relative path to project root directory
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-# 处理后数据的输出目录
+# Output directory for processed data
 PROCESSED_DIR = r"/newPipeline/data/processed"
 
 def ensure_dir_exists(directory):
     """
-    确保目录存在，如果不存在则创建。
+    Ensure directory exists, create if it doesn't exist.
 
-    参数:
-        directory (str): 目录路径
+    Args:
+        directory (str): Directory path
     """
     if not os.path.exists(directory):
         os.makedirs(directory)
 
 def c3dtotrc(src_c3d, output_dir=None):
     """
-    将C3D文件转换为TRC和MOT格式。
+    Convert C3D file to TRC and MOT formats.
 
-    参数:
-        src_c3d (str): 源C3D文件路径
-        output_dir (str, optional): 输出目录，默认为处理后数据目录
+    Args:
+        src_c3d (str): Source C3D file path
+        output_dir (str, optional): Output directory, defaults to processed data directory
 
-    返回:
-        tuple: (trc文件路径, mot文件路径)
+    Returns:
+        tuple: (trc file path, mot file path)
     """
     try:
         print(f"[DEBUG] c3dtotrc called. src_c3d = {src_c3d}")
@@ -53,47 +53,47 @@ def c3dtotrc(src_c3d, output_dir=None):
         print(f"[DEBUG] Will write TRC to: {trc_path}")
         print(f"[DEBUG] Will write MOT to: {mot_path}")
 
-        # 创建C3Dserver接口
+        # Create C3Dserver interface
         itf = c3d.c3dserver()
-        # 初始化日志
+        # Initialize logging
         c3d.init_logger(logger_lvl='DEBUG', c_hdlr_lvl='DEBUG', f_hdlr_lvl='DEBUG', f_hdlr_f_path=None)
-        # 打开C3D文件
+        # Open C3D file
         ret = c3d.open_c3d(itf, src_c3d)
 
-        # 定义原始坐标轴和目标坐标轴
+        # Define original coordinate axes and target coordinate axes
         axes_src = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
         axes_tgt = [[0, 1, 0], [0, 0, 1], [1, 0, 0]]
 
-        # 计算旋转矩阵
+        # Calculate rotation matrix
         rot_ret = R.align_vectors(a=axes_src, b=axes_tgt)
         rot_obj = rot_ret[0]
         trf = rot_obj.as_matrix()
 
-        # 导出 TRC 与 MOT
+        # Export TRC and MOT
         c3d.export_trc(itf, trc_path, rot_mat=trf)
         c3d.export_mot(itf, mot_path, rot_mat=trf)
 
-        # 关闭C3D
+        # Close C3D
         ret = c3d.close_c3d(itf)
 
-        print(f"已将C3D文件转换为TRC和MOT格式，保存在: {output_dir}")
+        print(f"Successfully converted C3D file to TRC and MOT formats, saved in: {output_dir}")
         return trc_path, mot_path
     except Exception as e:
-        print(f"转换C3D文件时出错: {e}")
+        print(f"Error converting C3D file: {e}")
         return None, None
 
 
 def c3d_gelenkm(rechts, src_c3d, output_dir=None):
     """
-    向C3D文件添加肘部和手部标记点。
+    Add elbow and hand marker points to C3D file.
 
-    参数:
-        rechts (bool): True表示右侧，False表示左侧
-        src_c3d (str): 源C3D文件路径
-        output_dir (str, optional): 输出目录，默认为处理后数据目录
+    Args:
+        rechts (bool): True for right side, False for left side
+        src_c3d (str): Source C3D file path
+        output_dir (str, optional): Output directory, defaults to processed data directory
 
-    返回:
-        str: 修改后的C3D文件路径
+    Returns:
+        str: Modified C3D file path
     """
     try:
         print(f"[DEBUG] c3d_gelenkm called. src_c3d = {src_c3d}, rechts = {rechts}")
@@ -119,7 +119,7 @@ def c3d_gelenkm(rechts, src_c3d, output_dir=None):
         dict_mkr_pos = dict_markers['DATA']['POS']
 
         if rechts:
-            # 右侧
+            # Right side
             new_mkr_name = 'REB'
             new_mkr_pos = (dict_mkr_pos['REL'] + dict_mkr_pos['REM']) * 0.5
             c3d.add_marker(itf, new_mkr_name, new_mkr_pos, mkr_resid=None, mkr_desc='REB', log=False)
@@ -128,7 +128,7 @@ def c3d_gelenkm(rechts, src_c3d, output_dir=None):
             hw_mkr_pos = (dict_mkr_pos['RRS'] + dict_mkr_pos['RUS']) * 0.5
             c3d.add_marker(itf, new_mkr_hw, hw_mkr_pos, mkr_resid=None, mkr_desc='HWM', log=False)
         else:
-            # 左侧
+            # Left side
             new_mkr_name = 'LEB'
             new_mkr_pos = (dict_mkr_pos['LEL'] + dict_mkr_pos['LEM']) * 0.5
             c3d.add_marker(itf, new_mkr_name, new_mkr_pos, mkr_resid=None, mkr_desc='LEB', log=False)
@@ -137,26 +137,26 @@ def c3d_gelenkm(rechts, src_c3d, output_dir=None):
             hw_mkr_pos = (dict_mkr_pos['LRS'] + dict_mkr_pos['LUS']) * 0.5
             c3d.add_marker(itf, new_mkr_hw, hw_mkr_pos, mkr_resid=None, mkr_desc='HWM', log=False)
 
-        # 保存修改后的C3D文件
+        # Save modified C3D file
         ret = c3d.save_c3d(itf, output_file, compress_param_blocks=True, log=True)
         ret = c3d.close_c3d(itf, log=True)
 
-        print(f"已添加标记点，保存在: {output_file}")
+        print(f"Successfully added marker points, saved in: {output_file}")
         return output_file
     except Exception as e:
-        print(f"添加标记点到C3D文件时出错: {e}")
+        print(f"Error adding marker points to C3D file: {e}")
         return None
 
 
 def extract_marker_data(src_c3d):
     """
-    从C3D文件中提取标记点数据。
+    Extract marker data from C3D file.
 
-    参数:
-        src_c3d (str): 源C3D文件路径
+    Args:
+        src_c3d (str): Source C3D file path
 
-    返回:
-        dict: 标记点数据字典
+    Returns:
+        dict: Marker data dictionary
     """
     try:
         print(f"[DEBUG] extract_marker_data called. src_c3d = {src_c3d}")
@@ -175,19 +175,19 @@ def extract_marker_data(src_c3d):
 
         return marker_data
     except Exception as e:
-        print(f"提取标记点数据时出错: {e}")
+        print(f"Error extracting marker data: {e}")
         return None
 
 
 def extract_analog_data(src_c3d):
     """
-    从C3D文件中提取模拟通道数据。
+    Extract analog channel data from C3D file.
 
-    参数:
-        src_c3d (str): 源C3D文件路径
+    Args:
+        src_c3d (str): Source C3D file path
 
-    返回:
-        dict: 模拟通道数据字典
+    Returns:
+        dict: Analog channel data dictionary
     """
     try:
         print(f"[DEBUG] extract_analog_data called. src_c3d = {src_c3d}")
@@ -209,19 +209,19 @@ def extract_analog_data(src_c3d):
 
         return analog_data
     except Exception as e:
-        print(f"提取模拟通道数据时出错: {e}")
+        print(f"Error extracting analog channel data: {e}")
         return None
 
 
 def get_c3d_metadata(src_c3d):
     """
-    获取C3D文件的元数据信息。
+    Get C3D file metadata information.
 
-    参数:
-        src_c3d (str): 源C3D文件路径
+    Args:
+        src_c3d (str): Source C3D file path
 
-    返回:
-        dict: 元数据字典
+    Returns:
+        dict: Metadata dictionary
     """
     try:
         print(f"[DEBUG] get_c3d_metadata called. src_c3d = {src_c3d}")
@@ -243,44 +243,44 @@ def get_c3d_metadata(src_c3d):
 
         return metadata
     except Exception as e:
-        print(f"获取C3D元数据时出错: {e}")
+        print(f"Error getting C3D metadata: {e}")
         return None
 
 
 def add_column_to_file(file_path, new_column_name, new_column_data):
     """
-    向文件添加新列。
+    Add new columns to file.
 
-    参数:
-        file_path (str): 要修改的文件路径
-        new_column_name (list): 要添加的列名列表
-        new_column_data (list of lists): 每列的数据
+    Args:
+        file_path (str): File path to modify
+        new_column_name (list): List of column names to add
+        new_column_data (list of lists): Data for each column
     """
     try:
         print(f"[DEBUG] add_column_to_file called. file_path = {file_path}")
         print(f"[DEBUG] Does file exist on disk? {os.path.exists(file_path)}")
         
-        # 确保输出目录存在
+        # Ensure output directory exists
         output_dir = os.path.dirname(file_path)
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-            print(f"[DEBUG] 创建输出目录: {output_dir}")
+            print(f"[DEBUG] Created output directory: {output_dir}")
         
-        # 如果文件不存在，创建一个新文件
+        # If file doesn't exist, create a new file
         if not os.path.exists(file_path):
-            print(f"[DEBUG] 文件不存在，创建新文件: {file_path}")
+            print(f"[DEBUG] File doesn't exist, creating new file: {file_path}")
             with open(file_path, 'w') as file:
-                # 写入文件头
+                # Write file header
                 file.write("nRows=0\n")
                 file.write("nColumns=0\n")
                 file.write("endheader\n")
                 file.write("\t".join(new_column_name) + "\n")
             
-            # 重新打开文件进行读取
+            # Reopen file for reading
             with open(file_path, 'r') as file:
                 lines = file.readlines()
         else:
-            # 如果文件存在，读取现有内容
+            # If file exists, read existing content
             with open(file_path, 'r') as file:
                 lines = file.readlines()
 
@@ -328,79 +328,79 @@ def add_column_to_file(file_path, new_column_name, new_column_data):
         with open(file_path, 'w') as file:
             file.write("\n".join(fixed_file) + "\n")
 
-        print(f"文件头已重建，新列已成功添加。")
+        print(f"File header has been rebuilt, new columns successfully added.")
     except Exception as e:
-        print(f"添加列时出错: {e}")
+        print(f"Error adding columns: {e}")
         import traceback
         traceback.print_exc()
 
 
-# 示例使用
+# Example usage
 if __name__ == '__main__':
-    # 使用相对路径示例
+    # Example using relative paths
     raw_data_dir = os.path.join(PROJECT_ROOT, 'data', 'raw', 'N10_n')
     processed_data_dir = os.path.join(PROJECT_ROOT, 'data', 'processed')
     ensure_dir_exists(processed_data_dir)
 
-    # 示例文件路径
+    # Example file path
     example_c3d = os.path.join(raw_data_dir, 'right', 'ROM_Ellenbogenflex_R 1.c3d')
 
-    # 调试：转换C3D到TRC和MOT
-    print("\n===== 测试C3D到TRC和MOT的转换 =====")
+    # Debug: Convert C3D to TRC and MOT
+    print("\n===== Testing C3D to TRC and MOT conversion =====")
     trc_path, mot_path = c3dtotrc(example_c3d, processed_data_dir)
 
-    # 检查返回值是否为 None
+    # Check if return values are None
     if trc_path is None or mot_path is None:
-        print("转换函数返回了 None，可能在转换过程中发生了错误。")
+        print("Conversion function returned None, an error may have occurred during conversion.")
     else:
-        print(f"转换函数返回值:\n TRC路径: {trc_path}\n MOT路径: {mot_path}")
+        print(f"Conversion function return values:\n TRC path: {trc_path}\n MOT path: {mot_path}")
 
-        # 进一步检查文件在不在磁盘上
+        # Further check if files exist on disk
         trc_exists = os.path.exists(trc_path)
         mot_exists = os.path.exists(mot_path)
 
         if trc_exists and mot_exists:
-            print("调试检查：TRC 文件与 MOT 文件均已在磁盘上找到，转换成功。")
+            print("Debug check: Both TRC and MOT files found on disk, conversion successful.")
         else:
-            print("调试检查：有文件未在磁盘上找到。请检查下列状态：")
-            print(f"TRC文件存在：{trc_exists}, MOT文件存在：{mot_exists}")
+            print("Debug check: Some files not found on disk. Please check the following status:")
+            print(f"TRC file exists: {trc_exists}, MOT file exists: {mot_exists}")
 
-    # 测试添加标记点功能
-    print("\n===== 测试添加标记点功能 =====")
+    # Test add marker points functionality
+    print("\n===== Testing add marker points functionality =====")
     output_c3d = c3d_gelenkm(True, example_c3d, processed_data_dir)
     if output_c3d is None:
-        print("添加标记点函数返回了 None，可能在处理过程中发生了错误。")
+        print("Add marker points function returned None, an error may have occurred during processing.")
     else:
-        print(f"添加标记点后的文件保存在: {output_c3d}")
+        print(f"File with added marker points saved in: {output_c3d}")
 
-        # 检查文件是否在磁盘上
+        # Check if file exists on disk
         if os.path.exists(output_c3d):
-            print(f"调试检查：添加标记点后的文件已在磁盘上找到，处理成功。")
+            print(f"Debug check: File with added marker points found on disk, processing successful.")
         else:
-            print(f"调试检查：添加标记点后的文件未在磁盘上找到。")
+            print(f"Debug check: File with added marker points not found on disk.")
 
-    # 测试提取标记点数据
-    print("\n===== 测试提取标记点数据 =====")
+    # Test extract marker data
+    print("\n===== Testing extract marker data =====")
     marker_data = extract_marker_data(example_c3d)
     if marker_data is not None:
-        print(f"成功提取了 {len(marker_data)} 个标记点的数据。")
+        print(f"Successfully extracted data for {len(marker_data)} markers.")
     else:
-        print("提取标记点数据失败。")
+        print("Failed to extract marker data.")
 
-    # 测试提取模拟通道数据
-    print("\n===== 测试提取模拟通道数据 =====")
+    # Test extract analog channel data
+    print("\n===== Testing extract analog channel data =====")
     analog_data = extract_analog_data(example_c3d)
     if analog_data is not None:
-        print(f"成功提取了 {len(analog_data)-1} 个模拟通道的数据。")  # -1 是因为包含了 'time'
+        print(f"Successfully extracted data for {len(analog_data)-1} analog channels.")  # -1 because 'time' is included
     else:
-        print("提取模拟通道数据失败。")
+        print("Failed to extract analog channel data.")
 
-    # 测试获取元数据
-    print("\n===== 测试获取C3D元数据 =====")
+    # Test get metadata
+    print("\n===== Testing get C3D metadata =====")
     metadata = get_c3d_metadata(example_c3d)
     if metadata is not None:
-        print("C3D文件元数据:")
+        print("C3D file metadata:")
         for key, value in metadata.items():
             print(f"  {key}: {value}")
     else:
-        print("获取C3D元数据失败。")
+        print("Failed to get C3D metadata.")
