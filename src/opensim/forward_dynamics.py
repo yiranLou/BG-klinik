@@ -64,7 +64,6 @@ def forward_dynamics(
             constraintSet = osimmodel.getConstraintSet()
             num_constraints = constraintSet.getSize()
             print(f"Model has {num_constraints} constraints")
-
             # Disable all constraints for maximum performance
             if num_constraints > 0:
                 print(f"[opt] Disabling ALL constraints for performance")
